@@ -1,0 +1,6 @@
+# dsh-minimap bundle patch: mounts the minimap overlay plugin in the dsh web
+# GUI profile. The host half is a no-op; all behavior is client-side.
+
+- insert:
+    - id: dsh-minimap
+      name: 'dsh-minimap'
