@@ -28,6 +28,7 @@ class FakeElement {
     this.clientWidth = 800
     this.clientHeight = 800
     this.scrollTop = 0
+    this.scrollLeft = 0
     this.scrollHeight = 6000
     this.nodeType = 1
     const self = this
@@ -354,7 +355,7 @@ test('scroll position drives minimap offset and viewport box (proportional mappi
   m.dispose()
 })
 
-test('mousedown inside the box grabs it; mousemove drags the editor scroll', () => {
+test('pointerdown inside the box grabs it; pointermove drags the editor scroll', () => {
   const env = makeFakeEnv()
   const { wrapper, cmEditor, scroller } = makeFakeEditor()
   env.registry.editors.push(cmEditor)
@@ -366,17 +367,17 @@ test('mousedown inside the box grabs it; mousemove drags the editor scroll', () 
 
   const preventDefault = () => {}
   // Box occupies mini-space [0, 300] at rest; grab at miniY=100.
-  canvas.fire('mousedown', { button: 0, clientY: 100, preventDefault })
+  canvas.fire('pointerdown', { button: 0, clientY: 100, pointerId: 1, preventDefault })
   assert.equal(scroller.scrollTop, 0, 'grabbing inside box does not jump')
-  assert.ok(env.document.listeners['mousemove'], 'drag listeners registered')
+  assert.ok(env.document.listeners['pointermove'], 'drag listeners registered')
   assert.equal(env.document.body.style.userSelect, 'none')
 
-  env.document.fire('mousemove', { clientY: 200 })
+  env.document.fire('pointermove', { clientY: 200, pointerId: 1 })
   // (200 - grab 100) / span 500 = frac 0.2 → 0.2 * docScrollRange 5400 = 1080.
   assert.equal(scroller.scrollTop, 1080)
 
-  env.document.fire('mouseup')
-  assert.equal(env.document.listeners['mousemove'].length, 0, 'drag listeners removed')
+  env.document.fire('pointerup', { pointerId: 1 })
+  assert.equal(env.document.listeners['pointermove'].length, 0, 'drag listeners removed')
   assert.equal(env.document.body.style.userSelect, '')
   m.dispose()
 })
@@ -396,14 +397,14 @@ test('drag tracks the pointer 1:1 in canvas space (no minimap-offset feedback)',
   env.flushRaf()
 
   // Grab inside the box at y=100, then move in +100px steps.
-  canvas.fire('mousedown', { button: 0, clientY: 100, preventDefault: () => {} })
-  env.document.fire('mousemove', { clientY: 200 })
+  canvas.fire('pointerdown', { button: 0, clientY: 100, pointerId: 1, preventDefault: () => {} })
+  env.document.fire('pointermove', { clientY: 200, pointerId: 1 })
   assert.equal(scroller.scrollTop, 1080, 'first step: +100px → frac 0.2')
   // The first step scrolled the editor (1080/5400 → minimap offset 440).
   // With the buggy math the second identical step would clamp to max.
-  env.document.fire('mousemove', { clientY: 300 })
+  env.document.fire('pointermove', { clientY: 300, pointerId: 1 })
   assert.equal(scroller.scrollTop, 2160, 'second step: another +100px → frac 0.4, not runaway')
-  env.document.fire('mouseup')
+  env.document.fire('pointerup', { pointerId: 1 })
   m.dispose()
 })
 
@@ -446,7 +447,7 @@ test('editor right-side chrome counts toward the reserved width', () => {
   m.dispose()
 })
 
-test('mousedown outside the box jump-centers the viewport', () => {
+test('clicking outside the box jump-centers the viewport', () => {
   const env = makeFakeEnv()
   const { wrapper, cmEditor, scroller } = makeFakeEditor()
   env.registry.editors.push(cmEditor)
@@ -456,11 +457,11 @@ test('mousedown outside the box jump-centers the viewport', () => {
   const canvas = wrapper.children.find((c) => c.className === 'dsh-minimap')
   env.flushRaf()
 
-  canvas.fire('mousedown', { button: 0, clientY: 500, preventDefault: () => {} })
+  canvas.fire('pointerdown', { button: 0, clientY: 500, pointerId: 1, preventDefault: () => {} })
   // Outside box (mini 500 > boxH 300): grab = 150 → frac (500-150)/500 = 0.7
   // → 0.7 * 5400 = 3780.
   assert.equal(scroller.scrollTop, 3780)
-  env.document.fire('mouseup')
+  env.document.fire('pointerup', { pointerId: 1 })
   m.dispose()
 })
 
@@ -478,15 +479,83 @@ test('bottom padding: drag to minimap bottom reaches the editor real max scroll'
 
   // Click at the very bottom edge of the canvas (jump-and-center past the
   // box): frac clamps to 1 → scrollTop = real max 6000, not 5400.
-  canvas.fire('mousedown', { button: 0, clientY: 800, preventDefault: () => {} })
+  canvas.fire('pointerdown', { button: 0, clientY: 800, pointerId: 1, preventDefault: () => {} })
   assert.equal(scroller.scrollTop, 6000, 'reaches the real bottom incl. padding')
-  env.document.fire('mouseup')
+  env.document.fire('pointerup', { pointerId: 1 })
 
   // And the box is glued to the canvas bottom edge at max scroll.
   scroller.fire('scroll')
   env.flushRaf()
   const boxes = canvas.ctx.calls.fillRect
   assert.deepEqual(boxes[boxes.length - 1], [0, 500, 110, 300])
+  m.dispose()
+})
+
+test('touch drags work; a second finger can neither hijack nor cancel the drag', () => {
+  const env = makeFakeEnv()
+  const { wrapper, cmEditor, scroller } = makeFakeEditor()
+  env.registry.editors.push(cmEditor)
+  const api = loadBundle(env)
+  const m = api._internals.createMinimapManager({ document: patchedDocument(env), window: env.window })
+  m.start()
+  const canvas = wrapper.children.find((c) => c.className === 'dsh-minimap')
+  env.flushRaf()
+
+  canvas.fire('pointerdown', { button: 0, clientY: 100, pointerId: 1, pointerType: 'touch', preventDefault: () => {} })
+  canvas.fire('pointerdown', { button: 0, clientY: 700, pointerId: 2, pointerType: 'touch', preventDefault: () => {} })
+  assert.equal(scroller.scrollTop, 0, 'second finger is ignored while a drag is active')
+
+  env.document.fire('pointermove', { clientY: 500, pointerId: 2, pointerType: 'touch' })
+  assert.equal(scroller.scrollTop, 0, 'second finger cannot move the drag')
+  env.document.fire('pointermove', { clientY: 200, pointerId: 1, pointerType: 'touch' })
+  assert.equal(scroller.scrollTop, 1080, 'the owning finger drags')
+
+  env.document.fire('pointerup', { pointerId: 2, pointerType: 'touch' })
+  assert.ok(env.document.listeners['pointermove'].length > 0, 'stray pointerup does not end the drag')
+  env.document.fire('pointercancel', { pointerId: 1, pointerType: 'touch' })
+  assert.equal(env.document.listeners['pointermove'].length, 0, 'pointercancel ends the drag')
+  assert.equal(env.document.body.style.userSelect, '')
+  m.dispose()
+})
+
+test('wheel over the minimap scrolls the editor; pinch zoom passes through', () => {
+  const env = makeFakeEnv()
+  const { wrapper, cmEditor, scroller } = makeFakeEditor()
+  env.registry.editors.push(cmEditor)
+  const api = loadBundle(env)
+  const m = api._internals.createMinimapManager({ document: patchedDocument(env), window: env.window })
+  m.start()
+  const canvas = wrapper.children.find((c) => c.className === 'dsh-minimap')
+  env.flushRaf()
+
+  let prevented = 0
+  const preventDefault = () => { prevented++ }
+  canvas.fire('wheel', { deltaY: 120, deltaX: 0, deltaMode: 0, ctrlKey: false, preventDefault })
+  assert.equal(scroller.scrollTop, 120, 'pixel deltas scroll 1:1')
+  // Line-mode deltas (Firefox): scaled by the editor line height (6000/1000 = 6).
+  canvas.fire('wheel', { deltaY: 3, deltaX: 0, deltaMode: 1, ctrlKey: false, preventDefault })
+  assert.equal(scroller.scrollTop, 138, 'line deltas scale to pixels')
+  canvas.fire('wheel', { deltaY: 0, deltaX: 30, deltaMode: 0, ctrlKey: false, preventDefault })
+  assert.equal(scroller.scrollLeft, 30, 'horizontal deltas pan the scroller')
+  canvas.fire('wheel', { deltaY: 100, deltaX: 0, deltaMode: 0, ctrlKey: true, preventDefault })
+  assert.equal(scroller.scrollTop, 138, 'ctrl+wheel leaves the editor scroll untouched')
+  assert.equal(prevented, 3, 'pinch-zoom gesture is not swallowed')
+  m.dispose()
+})
+
+test('short document: viewport box covers exactly the thumbnail', () => {
+  const env = makeFakeEnv()
+  // 10 lines → 30px thumbnail, fully visible in the editor at once: the box
+  // must clamp to the thumbnail instead of overflowing into empty canvas.
+  const { wrapper, cmEditor } = makeFakeEditor({ lines: 10, contentHeight: 220 })
+  env.registry.editors.push(cmEditor)
+  const api = loadBundle(env)
+  const m = api._internals.createMinimapManager({ document: patchedDocument(env), window: env.window })
+  m.start()
+  const canvas = wrapper.children.find((c) => c.className === 'dsh-minimap')
+  env.flushRaf()
+  const boxes = canvas.ctx.calls.fillRect
+  assert.deepEqual(boxes[boxes.length - 1], [0, 0, 110, 30], 'box height clamps to the thumbnail')
   m.dispose()
 })
 
@@ -554,7 +623,7 @@ test('pure mapping helpers behave at boundaries', () => {
   const env = makeFakeEnv()
   const {
     computeLineHeight, minimapOffsetFor, visibleLineRange, scrollTopForMiniY,
-    boxSpan, viewportBoxTop, scrollFraction,
+    boxSpan, viewportBoxTop, scrollFraction, boxHeightFor,
   } = loadBundle(env)._internals
 
   assert.equal(computeLineHeight(100, 800), 3)
@@ -572,6 +641,10 @@ test('pure mapping helpers behave at boundaries', () => {
 
   assert.equal(boxSpan(800, 3000, 300), 500)
   assert.equal(boxSpan(800, 250, 300), 0, 'box taller than a short minimap → no travel')
+
+  assert.equal(boxHeightFor({ containerH: 800, totalMiniH: 3000, clientH: 600, ratio: 0.5 }), 300)
+  assert.equal(boxHeightFor({ containerH: 800, totalMiniH: 30, clientH: 600, ratio: 30 / 220 }), 30, 'short doc: box capped at the thumbnail')
+  assert.equal(boxHeightFor({ containerH: 800, totalMiniH: 3000, clientH: 10, ratio: 0.5 }), 8, 'grabbability floor')
 
   assert.equal(viewportBoxTop(0, 5400, 800, 3000, 300), 0)
   assert.equal(viewportBoxTop(2700, 5400, 800, 3000, 300), 250)

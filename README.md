@@ -45,8 +45,8 @@ pnpm dsh web
 
 - 滚动编辑器 → 缩略图视口框同步移动
 - 点击缩略图任意位置 → 编辑器跳转到对应位置（视口居中）
-- 按住视口框拖动 → 编辑器跟随滚动
-- 悬停缩略图滚轮 → 等效于滚动编辑器
+- 按住视口框拖动 → 编辑器跟随滚动（鼠标与触屏均可）
+- 悬停缩略图滚轮 → 等效于滚动编辑器（含触控板横向滚动）
 
 ### 限制
 
@@ -94,8 +94,8 @@ Open any session, open a text file in the Files sidebar, and the minimap appears
 
 - Scroll the editor → the viewport box follows
 - Click anywhere on the minimap → jump there (the viewport centers)
-- Drag the viewport box → the editor scrolls along
-- Hover the minimap and use the wheel → same as scrolling the editor
+- Drag the viewport box → the editor scrolls along (mouse or touch)
+- Hover the minimap and use the wheel → same as scrolling the editor (trackpad horizontal scroll included)
 
 ### Limitations
 

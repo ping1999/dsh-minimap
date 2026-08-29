@@ -8,10 +8,10 @@ dsh web GUI 插件：给侧边文件查看器（dsh-better-sidebar 内的 CodeMi
 
 ## 仓库结构
 
-- `lib/client.js` — 浏览器端全部逻辑（约 630 行、零依赖 IIFE）。所有行为都在这里。
+- `lib/client.js` — 浏览器端全部逻辑（约 670 行、零依赖 IIFE）。所有行为都在这里。
 - `lib/host.js` — Node 侧入口（`main`）。**故意的空实现，且必须保持 Node-safe**（模块作用域不得碰 window/document），因为 Node 侧 loader 会以包根入口导入它。
 - `cordis.patch.yml` — bundle patch，把插件挂进 web profile（`dsh plugin add` 的 reconcile 自动合并进 profile 的 `dsh.profile.bundles` 层）。
-- `tests/client.test.mjs` — node:test 测试，自带 fake-editor 线束（16 个用例）。`tests/host.test.mjs` — host 冒烟测试。
+- `tests/client.test.mjs` — node:test 测试，自带 fake-editor 线束（19 个用例）。`tests/host.test.mjs` — host 冒烟测试。
 - `package.json` — `exports`：`"."` → host，`"./client"` → client（浏览器专属代码只能走 `./client`）。`dsh.bundle.patch` 声明 bundle；`dsh.client { platform: "web", immediately: true }` 声明随 web 启动即加载。`files` 白名单控制 npm 发布内容（本文件与 tests 不发布）。
 
 ## 架构
@@ -38,6 +38,10 @@ client 文件刻意分两层：
 
 编辑器与 minimap 共享同一滚动分数：`frac = scrollTop / docScrollRange`，其中 `docScrollRange = scroller.scrollHeight - clientHeight`（**真实**滚动范围，含底部 padding 与 CM 的实时高度重估）。minimap 位移 = `frac * miniScrollRange`，点击/拖动走逆运算。两端精确对齐：视口框拖到 minimap 底缘即编辑器真实最大 scrollTop。相关函数：`minimapOffsetFor` / `scrollTopForMiniY` / `computeMetrics`。
 
+### 输入：Pointer Events + 滚轮转发
+
+拖动/点击走 Pointer Events（鼠标、触屏、手写笔统一一条路径），以 `pointerId` 绑定当次拖动——第二根手指既不能移动也不能取消它；`pointercancel` 与 `pointerup` 同等收尾。wheel 事件手动转发给 scroller：`deltaMode` 行/页先换算成像素，`deltaX` 横向滚动同样转发，`ctrl+wheel`（捏合缩放）不拦截。
+
 ### 几何：宽度自适应 + 固定 5px 间隙
 
 - 宽度 = `容器宽 * widthRatio(0.22)`，钳制在 `[widthMin 56, widthMax 110]` CSS px，ResizeObserver 跟随侧栏拖宽拖窄。
@@ -51,7 +55,7 @@ canvas 按 devicePixelRatio 渲染；只绘制可视窗口内的行（`visibleLi
 
 ### 渐进式语法着色
 
-全文一次性着色**做不到**：CM6 虚拟化 DOM（只有可视行存在 token 元素），宿主也没有可离线高亮的共享包。策略是从编辑器已渲染的 DOM 按行捕获颜色段，缓存以行号为键、**以行文本校验**（编辑后自动失效重捕）；有缓存的行画真实高亮色，其余回落为编辑器基础文字色；整体以 `textAlpha 0.55` 绘制以适配明暗主题。
+全文一次性着色**做不到**：CM6 虚拟化 DOM（只有可视行存在 token 元素），宿主也没有可离线高亮的共享包。策略是从编辑器已渲染的 DOM 按行捕获颜色段，缓存以行号为键、**以行文本校验**（编辑后自动失效重捕），条目数上限 `colorCacheMax(4000)`、按插入序 FIFO 淘汰；有缓存的行画真实高亮色，其余回落为编辑器基础文字色；整体以 `textAlpha 0.55` 绘制以适配明暗主题。
 
 ### 叠加纯净性与生命周期
 

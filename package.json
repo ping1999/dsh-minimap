@@ -1,7 +1,7 @@
 {
   "name": "dsh-minimap",
   "description": "VS Code-style minimap (text thumbnail + draggable viewport) overlay for the dsh web GUI's side file viewer",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "main": "lib/host.js",
   "exports": {
